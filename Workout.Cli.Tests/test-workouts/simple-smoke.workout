@@ -1,0 +1,8 @@
+import './acr.bicep'
+
+@smoke
+test smokeTest = {
+    assert(acr.name == 'acr')
+    assert(acr.location = 'eastus')
+    assert(acr.sku.name == 'Basic')
+}
