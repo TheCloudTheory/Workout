@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "dotnet",
+			"task": "build",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": [],
+			"label": "dotnet: build"
+		},
+		{
+			"type": "dotnet",
+			"task": "build /home/thecloudtheory/Workout/Workout.Cli/Workout.Cli.csproj",
+			"file": "/home/thecloudtheory/Workout/Workout.Cli/Workout.Cli.csproj",
+			"group": "build",
+			"problemMatcher": [],
+			"label": "dotnet: build /home/thecloudtheory/Workout/Workout.Cli/Workout.Cli.csproj"
+		}
+	]
+}

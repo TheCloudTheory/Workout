@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Bicep.Core.Registry.PublicRegistry;
+using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console.Cli;
 using Workout.Cli.Commands;
 using Workout.Cli.Infrastructure;
@@ -10,6 +11,9 @@ internal class Program
     {
         var services = new ServiceCollection();
         services.AddSingleton<ILogger, Logger>();
+
+        // TODO: Move that to Workout.Bicep
+        services.AddSingleton<IPublicRegistryModuleMetadataProvider, PublicRegistryModuleMetadataProvider>();
 
         var logger = services.BuildServiceProvider().GetService<ILogger>() ?? throw new InvalidOperationException("Logger is not registered");
         logger.LogInformation("Starting application");

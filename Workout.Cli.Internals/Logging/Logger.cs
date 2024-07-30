@@ -9,6 +9,11 @@ internal sealed class Logger : ILogger
         Log(message, LogLevel.Debug);
     }
 
+    public void LogError(string message)
+    {
+        AnsiConsole.MarkupLine($"[red][bold]{message}[/][/]");
+    }
+
     public void LogInformation(string message)
     {
         Log(message, LogLevel.Information);

@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workout.Cli.Internals", "Wo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workout.Language", "Workout.Language\Workout.Language.csproj", "{22403706-A334-4635-B23B-A22CC7A46903}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Workout.Bicep", "Workout.Bicep\Workout.Bicep.csproj", "{F78F8959-46C7-47F9-BC10-D8D866B819AF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{22403706-A334-4635-B23B-A22CC7A46903}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{22403706-A334-4635-B23B-A22CC7A46903}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{22403706-A334-4635-B23B-A22CC7A46903}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F78F8959-46C7-47F9-BC10-D8D866B819AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F78F8959-46C7-47F9-BC10-D8D866B819AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F78F8959-46C7-47F9-BC10-D8D866B819AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F78F8959-46C7-47F9-BC10-D8D866B819AF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,82 +1,114 @@
-﻿namespace Workout.Language;
+﻿using System.IO.Abstractions;
+using Workout.Bicep;
+using Workout.Cli.Internals.Logging;
+
+namespace Workout.Language;
 
 internal sealed class WorkoutFileParser
 {
-    // Change this to a strongly-typed list
-    private readonly List<Tuple<TokenType, string?>> tokens = [];
+    private readonly List<Token> tokens = [];
+    private readonly string workingDirectory;
+    private readonly BicepCompilationProvider provider;
+    private readonly ILogger logger;
 
-    public void Parse(string filePath)
+    public WorkoutFileParser(
+        string workingDirectory,
+        BicepCompilationProvider provider,
+        ILogger logger
+    )
+    {
+        this.workingDirectory = workingDirectory;
+        this.provider = provider;
+        this.logger = logger;
+    }
+
+    public async Task Parse(string filePath)
     {
         var fileContent = File.ReadAllText(filePath);
         var lines = fileContent.Split(Environment.NewLine);
         var blockedOpened = false;
 
-        foreach (var line in lines)
+        for (var i = 0; i <= lines.Length - 1; i++)
         {
-            var cleanedLine = line.Replace("\t", ""); // Remove tabs
+            var line = lines[i];
+            var lineNumber = i + 1;
+            line = line.Replace("\t", ""); // Remove tabs
 
-            if(line.StartsWith("import"))
+            if (line.StartsWith("import"))
             {
                 var importPath = line.Split(" ")[1];
-                this.tokens.Add(new Tuple<TokenType, string?>(TokenType.Import, importPath));
+                this.tokens.Add(new Token(TokenType.Import, lineNumber, importPath));
             }
 
-            if(line.StartsWith("@smoke"))
+            if (line.StartsWith("@smoke"))
             {
-                this.tokens.Add(new Tuple<TokenType, string?>(TokenType.SmokeTestDecorator, null));
+                this.tokens.Add(new Token(TokenType.SmokeTestDecorator, lineNumber, null));
             }
 
-            if(line.StartsWith("test"))
+            if (line.StartsWith("test"))
             {
                 blockedOpened = true;
                 var testName = line.Split(" ")[1];
-                this.tokens.Add(new Tuple<TokenType, string?>(TokenType.Test, testName));
+                this.tokens.Add(new Token(TokenType.Test, lineNumber, testName));
             }
 
-            if(line.StartsWith("}"))
+            if (line.StartsWith("}"))
             {
-                this.tokens.Add(new Tuple<TokenType, string?>(TokenType.EndOfBlock, null));
+                this.tokens.Add(new Token(TokenType.EndOfBlock, lineNumber, null));
                 blockedOpened = false;
             }
 
-            if(blockedOpened)
+            if (blockedOpened)
             {
-                if(line.StartsWith("assert"))
+                if (line.StartsWith("assert"))
                 {
                     var expression = line.Replace("assert(", string.Empty).Replace(")", string.Empty);
-                    this.tokens.Add(new Tuple<TokenType, string?>(TokenType.Assertion, expression));
+                    this.tokens.Add(new Token(TokenType.Assertion, lineNumber, expression));
                 }
             }
         }
 
-        ValidateTokens();
+        await ValidateTokens();
     }
 
-    private void ValidateTokens()
+    private async Task ValidateTokens()
     {
         var errors = new List<Error>();
-        foreach(var token in this.tokens)
+        foreach (var token in this.tokens)
         {
-            switch(token.Item1)
+            switch (token.Type)
             {
                 case TokenType.Import:
-                    if(token.Item2 is null)
+                    if (token.Value is null)
                     {
-                        errors.Add(Errors.Error_NullImportPath(0, 0));
+                        errors.Add(Errors.Error_NullImportPath(token.Line, 0));
+                        break;
                     }
+
+                    var importPath = Path.Combine(this.workingDirectory, token.Value).Replace("'", string.Empty); // Remove single quotes as they are not needed
+                    await this.provider.CompileAsync(importPath);
+                    if(File.Exists(importPath) == false)
+                    {
+                        this.logger.LogDebug($"Failed to validate import path: {importPath}");
+                        errors.Add(Errors.Error_InvalidImportPath(token.Line, 0));
+                        break;
+                    }
+
                     break;
                 case TokenType.Test:
-                    if(token.Item2 is null)
-                    {
-                        throw new Exception("Test name is required.");
-                    }
+                    
                     break;
                 case TokenType.Assertion:
-                    if(token.Item2 is null)
-                    {
-                        throw new Exception("Assertion expression is required.");
-                    }
+
                     break;
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            foreach (var error in errors)
+            {
+                this.logger.LogError($"Error {error.Code} at line {error.Line}, column {error.Column}: {error.Message}");
             }
         }
     }

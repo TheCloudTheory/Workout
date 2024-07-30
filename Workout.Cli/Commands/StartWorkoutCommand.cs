@@ -1,3 +1,4 @@
+using System.IO.Abstractions;
 using Spectre.Console.Cli;
 using Workout.Cli.Internals.Logging;
 using Workout.Language;
@@ -6,12 +7,15 @@ namespace Workout.Cli.Commands;
 
 internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
 {
+    private readonly IServiceProvider provider;
     private readonly ILogger logger;
 
     public StartWorkoutCommand(
+        IServiceProvider provider,
         ILogger logger
     )
     {
+        this.provider = provider;
         this.logger = logger;
     }
 
@@ -43,8 +47,12 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
         foreach (var workoutFile in workoutFiles)
         {
             this.logger.LogInformation($"Parsing workout file: {workoutFile}");
-            var parser = new WorkoutFileParser();
-            parser.Parse(workoutFile);
+            var parser = new WorkoutFileParser(
+                settings.WorkingDirectory, 
+                new Bicep.BicepCompilationProvider(new FileSystem(), this.provider),
+                this.logger);
+
+            parser.Parse(workoutFile).GetAwaiter().GetResult();
         }
 
         return 0;
