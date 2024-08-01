@@ -25,7 +25,9 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
 
 output outputAcrId string = acr.id
 ```
-A test for that definition could look like this:
+A test for that definition could look like this.
+
+### V1
 ```
 import './acr.bicep'
 
@@ -39,5 +41,22 @@ test smokeTest = {
 @e2e
 test e2eTest = {
     assert(contains(outputAcrId, 'acr'))
+}
+```
+
+### V2
+```
+import './acr.bicep'
+
+@smoke
+test smokeTest = {
+    equals(acr.name, 'acr)
+    equals(acr.location, 'eastus')
+    equals(acr.sku.name, 'Basic)
+}
+
+@e2e
+test e2eTest = {
+    contains(outputAcrId, 'acr')
 }
 ```
