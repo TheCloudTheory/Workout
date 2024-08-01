@@ -44,16 +44,23 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
             return 0;
         }
 
+        var tests = new List<TestModel>();
+
         foreach (var workoutFile in workoutFiles)
         {
-            this.logger.LogInformation($"Parsing workout file: {workoutFile}");
             var parser = new WorkoutFileParser(
                 settings.WorkingDirectory, 
                 new Bicep.BicepCompilationProvider(new FileSystem(), this.provider),
                 this.logger);
 
-            parser.Parse(workoutFile).GetAwaiter().GetResult();
+            this.logger.LogDebug($"Parsing workout file: {workoutFile}.");
+            var parsedTests = parser.Parse(workoutFile).GetAwaiter().GetResult();
+            this.logger.LogDebug($"Parsed {parsedTests.Count} tests from {workoutFile}.");
+
+            tests.AddRange(parsedTests);
         }
+
+        this.logger.LogInformation($"Found {tests.Count} tests.");
 
         return 0;
     }

@@ -1,4 +1,5 @@
-﻿using System.IO.Abstractions;
+﻿using System.Collections.Immutable;
+using System.IO.Abstractions;
 using Bicep.Core;
 using Bicep.Core.Analyzers.Linter;
 using Bicep.Core.Configuration;
@@ -6,6 +7,7 @@ using Bicep.Core.Features;
 using Bicep.Core.FileSystem;
 using Bicep.Core.Registry;
 using Bicep.Core.Registry.Auth;
+using Bicep.Core.Semantics.Metadata;
 using Bicep.Core.Semantics.Namespaces;
 using Bicep.Core.TypeSystem.Providers;
 using Environment = Bicep.Core.Utils.Environment;
@@ -45,12 +47,28 @@ internal sealed class BicepCompilationProvider
         this.fileSystem = fileSystem;
     }
 
-    public async Task CompileAsync(string path)
+    public async Task<CompilationResult> CompileAsync(string path)
     {
         var absolutePath = this.fileSystem.Path.GetFullPath(path);
         var compilation = await compiler.CreateCompilation(new Uri(absolutePath), null, true);
         var models = compilation.GetAllBicepModels();
+        var model = models.First(); // TODO: Is it safe to always assume a single result?
 
-        // Return everything required for proper mapping of Bicep models to Workout models
+        return new CompilationResult(model.AllResources, model.Outputs);
     }
+}
+
+internal sealed class CompilationResult
+{
+    private ImmutableArray<ResourceMetadata> allResources;
+    private ImmutableArray<OutputMetadata> outputs;
+
+    public CompilationResult(ImmutableArray<ResourceMetadata> allResources, ImmutableArray<OutputMetadata> outputs)
+    {
+        this.allResources = allResources;
+        this.outputs = outputs;
+    }
+
+    public ImmutableArray<ResourceMetadata> AllResources => this.allResources;
+    public ImmutableArray<OutputMetadata> Outputs => this.outputs;
 }

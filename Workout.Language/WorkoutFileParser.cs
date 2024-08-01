@@ -5,7 +5,6 @@ namespace Workout.Language;
 
 internal sealed class WorkoutFileParser
 {
-    private readonly List<Token> tokens = [];
     private readonly string workingDirectory;
     private readonly BicepCompilationProvider provider;
     private readonly ILogger logger;
@@ -21,8 +20,9 @@ internal sealed class WorkoutFileParser
         this.logger = logger;
     }
 
-    public async Task Parse(string filePath)
+    public async Task<IReadOnlyList<TestModel>> Parse(string filePath)
     {
+        var tokens = new List<Token>();
         var fileContent = File.ReadAllText(filePath);
         var lines = fileContent.Split(Environment.NewLine);
         var blockedOpened = false;
@@ -31,29 +31,29 @@ internal sealed class WorkoutFileParser
         {
             var line = lines[i];
             var lineNumber = i + 1;
-            line = line.Replace("\t", ""); // Remove tabs
+            line = line.Trim();
 
             if (line.StartsWith("import"))
             {
                 var importPath = line.Split(" ")[1];
-                this.tokens.Add(new Token(TokenType.Import, lineNumber, importPath));
+                tokens.Add(new Token(TokenType.Import, lineNumber, importPath));
             }
 
             if (line.StartsWith("@smoke"))
             {
-                this.tokens.Add(new Token(TokenType.SmokeTestDecorator, lineNumber, "@smoke"));
+                tokens.Add(new Token(TokenType.SmokeTestDecorator, lineNumber, "@smoke"));
             }
 
             if (line.StartsWith("test"))
             {
                 blockedOpened = true;
                 var testName = line.Split(" ")[1];
-                this.tokens.Add(new Token(TokenType.Test, lineNumber, testName));
+                tokens.Add(new Token(TokenType.Test, lineNumber, testName));
             }
 
             if (line.StartsWith("}"))
             {
-                this.tokens.Add(new Token(TokenType.EndOfBlock, lineNumber, "}"));
+                tokens.Add(new Token(TokenType.EndOfBlock, lineNumber, "}"));
                 blockedOpened = false;
             }
 
@@ -62,25 +62,28 @@ internal sealed class WorkoutFileParser
                 if (line.StartsWith("assert"))
                 {
                     var expression = line.Replace("assert(", string.Empty).Replace(")", string.Empty);
-                    var previousToken = this.tokens.Last();
+                    var previousToken = tokens.Last();
                     previousToken.AddToken(new Token(TokenType.Assertion, lineNumber, expression));
                 }
             }
         }
 
-        await ValidateTokens();
+        await ValidateTokens(tokens);
+        var tests = await ExtractTests(tokens);
+
+        return tests;
     }
 
-    private async Task ValidateTokens()
+    private async Task ValidateTokens(List<Token> tokens)
     {
         var errors = new List<Error>();
 
-        if(this.tokens.Any(_ => _.Type == TokenType.Import) == false)
+        if(tokens.Any(_ => _.Type == TokenType.Import) == false)
         {
             errors.Add(Errors.Error_NoImportFound(0, 0));
         }
 
-        foreach (var token in this.tokens)
+        foreach (var token in tokens)
         {
             switch (token.Type)
             {
@@ -108,6 +111,8 @@ internal sealed class WorkoutFileParser
                         {
                             errors.Add(Errors.Error_InvalidToken(token.Value!, childToken.Line, 0));
                         }
+
+                        ValidateAssertion(childToken, errors);
                     }
                     break;
                 case TokenType.SmokeTestDecorator:
@@ -127,5 +132,40 @@ internal sealed class WorkoutFileParser
                 this.logger.LogError($"Error {error.Code} at line {error.Line}, column {error.Column}: {error.Message}");
             }
         }
+    }
+
+    private void ValidateAssertion(Token childToken, List<Error> errors)
+    {
+        var expression = childToken.Value!;
+        var parts = expression.Split("==");
+
+        if (parts.Length != 2)
+        {
+            errors.Add(Errors.Error_InvalidToken(expression, childToken.Line, 0));
+        }
+    }
+
+    private async Task<IReadOnlyList<TestModel>> ExtractTests(List<Token> tokens)
+    {
+        var tests = new List<TestModel>();
+        var imports = tokens.Where(_ => _.Type == TokenType.Import).ToList();
+
+        foreach(var import in imports)
+        {
+            var importPath = Path.Combine(this.workingDirectory, import.Value!).Replace("'", string.Empty);
+
+            this.logger.LogDebug($"Compiling import: {importPath} for {this.workingDirectory}.");
+            var result = await this.provider.CompileAsync(importPath);
+        }
+
+        foreach (var token in tokens)
+        {
+            if (token.Type == TokenType.Test)
+            {
+                tests.Add(new TestModel(token.Value!, token.Tokens.Select(_ => _.Value!).ToArray()));
+            }
+        }
+
+        return tests;
     }
 }
