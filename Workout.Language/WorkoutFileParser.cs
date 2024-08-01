@@ -1,5 +1,4 @@
-﻿using System.IO.Abstractions;
-using Workout.Bicep;
+﻿using Workout.Bicep;
 using Workout.Cli.Internals.Logging;
 
 namespace Workout.Language;
@@ -42,7 +41,7 @@ internal sealed class WorkoutFileParser
 
             if (line.StartsWith("@smoke"))
             {
-                this.tokens.Add(new Token(TokenType.SmokeTestDecorator, lineNumber, null));
+                this.tokens.Add(new Token(TokenType.SmokeTestDecorator, lineNumber, "@smoke"));
             }
 
             if (line.StartsWith("test"))
@@ -54,7 +53,7 @@ internal sealed class WorkoutFileParser
 
             if (line.StartsWith("}"))
             {
-                this.tokens.Add(new Token(TokenType.EndOfBlock, lineNumber, null));
+                this.tokens.Add(new Token(TokenType.EndOfBlock, lineNumber, "}"));
                 blockedOpened = false;
             }
 
@@ -63,7 +62,8 @@ internal sealed class WorkoutFileParser
                 if (line.StartsWith("assert"))
                 {
                     var expression = line.Replace("assert(", string.Empty).Replace(")", string.Empty);
-                    this.tokens.Add(new Token(TokenType.Assertion, lineNumber, expression));
+                    var previousToken = this.tokens.Last();
+                    previousToken.AddToken(new Token(TokenType.Assertion, lineNumber, expression));
                 }
             }
         }
@@ -74,6 +74,12 @@ internal sealed class WorkoutFileParser
     private async Task ValidateTokens()
     {
         var errors = new List<Error>();
+
+        if(this.tokens.Any(_ => _.Type == TokenType.Import) == false)
+        {
+            errors.Add(Errors.Error_NoImportFound(0, 0));
+        }
+
         foreach (var token in this.tokens)
         {
             switch (token.Type)
@@ -96,10 +102,20 @@ internal sealed class WorkoutFileParser
 
                     break;
                 case TokenType.Test:
-                    
+                    foreach(var childToken in token.Tokens)
+                    {
+                        if(childToken.Type != TokenType.Assertion)
+                        {
+                            errors.Add(Errors.Error_InvalidToken(token.Value!, childToken.Line, 0));
+                        }
+                    }
                     break;
-                case TokenType.Assertion:
-
+                case TokenType.SmokeTestDecorator:
+                    break;
+                case TokenType.EndOfBlock:
+                    break;
+                default:
+                    errors.Add(Errors.Error_InvalidToken(token.Value!, token.Line, 0));
                     break;
             }
         }
