@@ -2,8 +2,7 @@ import './acr.bicep'
 
 @smoke
 test smokeTest = {
-    // Change 'assert' to 'equals'
-    assert(acr.name == 'acr')
-    assert(acr.location == 'eastus')
-    assert(acr.sku.name == 'Basic')
+    equals(acr.name == 'acr')
+    equals(acr.location == 'eastus')
+    equals(acr.sku.name == 'Basic')
 }
