@@ -7,3 +7,10 @@ test smokeTest = {
     equals(acr.sku.name, 'Basic')
     equals('foo', 'foo')
 }
+
+@smoke
+test smokeTest2 = {
+    equals(acr2.name, 'myacr2')
+    equals(acr2.location, 'westeurope')
+    equals(acr2.sku.name, 'Standard')
+}

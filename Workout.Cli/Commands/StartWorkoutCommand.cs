@@ -64,6 +64,12 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
 
         var failedTests = new List<TestModel>();
 
+        if(settings.TestCase is not null)
+        {
+            tests = tests.Where(x => x.TestName == settings.TestCase).ToList();
+            this.logger.LogDebug("Filtered tests by test case.");
+        }
+
         foreach (var test in tests)
         {
             this.logger.LogInformation($"Running test: {test.TestName}.");
@@ -105,4 +111,7 @@ internal sealed class StartWorkoutCommandSettings : CommandSettings
 {
     [CommandOption("-d|--working-directory")]
     public string? WorkingDirectory { get; set; }
+
+    [CommandOption("-t|--test-case")]
+    public string? TestCase { get; set; }
 }
