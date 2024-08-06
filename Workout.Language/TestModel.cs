@@ -1,16 +1,18 @@
-﻿namespace Workout.Language;
+﻿using Workout.Language.Tokens;
+
+namespace Workout.Language;
 
 internal sealed class TestModel
 {
     public TestModel(
         string testName,
-        string[] rawAssertions
+        AssertionToken[] rawAssertions
     )
     {
         TestName = testName;
-        RawAssertions = rawAssertions;
+        Assertions = rawAssertions;
     }
 
     public string TestName { get; }
-    public string[] RawAssertions { get; }
+    public AssertionToken[] Assertions { get; }
 }

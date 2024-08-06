@@ -27,18 +27,30 @@ internal sealed class WorkoutFileParser
         var fileContent = File.ReadAllText(filePath);
         var lines = fileContent.Split(Environment.NewLine);
         var blockedOpened = false;
+        var imports = new List<ImportToken>();
+
+        for (var i = 0; i <= lines.Length - 1; i++)
+        {
+            var line = lines[i];
+            var lineNumber = i + 1;
+
+            if (line.StartsWith("import"))
+            {
+                var importPath = line.Split(" ")[1];
+                var importToken = new ImportToken(lineNumber, importPath, this.workingDirectory, this.provider, this.logger);
+                
+                tokens.Add(importToken);
+                imports.Add(importToken);
+            }
+        }
+
+        var compiledImports = await Task.WhenAll(imports.Select(async x => await x.GetCompiledImport()));
 
         for (var i = 0; i <= lines.Length - 1; i++)
         {
             var line = lines[i];
             var lineNumber = i + 1;
             line = line.Trim();
-
-            if (line.StartsWith("import"))
-            {
-                var importPath = line.Split(" ")[1];
-                tokens.Add(new ImportToken(lineNumber, importPath));
-            }
 
             if (line.StartsWith("@smoke"))
             {
@@ -47,6 +59,8 @@ internal sealed class WorkoutFileParser
 
             if (line.StartsWith("test"))
             {
+                this.logger.LogDebug($"Found test block at line {lineNumber}.");
+
                 blockedOpened = true;
                 var testName = line.Split(" ")[1];
                 tokens.Add(new TestToken(lineNumber, testName));
@@ -56,20 +70,25 @@ internal sealed class WorkoutFileParser
             {
                 tokens.Add(new EndOfBlockToken(lineNumber, "}"));
                 blockedOpened = false;
+
+                this.logger.LogDebug($"Closed block at line {lineNumber}.");
             }
 
             if (blockedOpened)
             {
-                if (line.StartsWith("assert"))
+                this.logger.LogDebug("Block is opened.");
+
+                if (line.StartsWith("equals"))
                 {
-                    var expression = line.Replace("assert(", string.Empty).Replace(")", string.Empty);
+                    this.logger.LogDebug($"Found assertion (equals) at line {lineNumber}.");
+
                     if (tokens.Last() is not TestToken previousToken)
                     {
                         this.logger.LogError($"Error: Assertion found without a test block at line {lineNumber}.");
                         continue;
                     }
 
-                    previousToken.AddAssertion(new AssertionToken(lineNumber, expression));
+                    previousToken.AddAssertion(new AssertionToken(lineNumber, line, compiledImports));
                 }
             }
         }
@@ -83,6 +102,8 @@ internal sealed class WorkoutFileParser
     // TODO: Validation should be delegated to each token
     private void ValidateTokens(List<Token> tokens)
     {
+        this.logger.LogDebug("Validating tokens.");
+
         var errors = new List<Error>();
 
         if(tokens.Any(_ => _.Type == TokenType.Import) == false)
@@ -95,20 +116,7 @@ internal sealed class WorkoutFileParser
             switch (token.Type)
             {
                 case TokenType.Import:
-                    if (token.Value is null)
-                    {
-                        errors.Add(Errors.Error_NullImportPath(token.Line, 0));
-                        break;
-                    }
-
-                    var importPath = Path.Combine(this.workingDirectory, token.Value).Replace("'", string.Empty); // Remove single quotes as they are not needed
-                    if(File.Exists(importPath) == false)
-                    {
-                        this.logger.LogDebug($"Failed to validate import path: {importPath}");
-                        errors.Add(Errors.Error_InvalidImportPath(token.Line, 0));
-                        break;
-                    }
-
+                    ((ImportToken)token).Validate(errors);
                     break;
                 case TokenType.Test:
                     var testToken = token as TestToken;
@@ -142,15 +150,16 @@ internal sealed class WorkoutFileParser
         }
     }
 
-    private void ValidateAssertion(Token childToken, List<Error> errors)
+    private void ValidateAssertion(AssertionToken childToken, List<Error> errors)
     {
-        var expression = childToken.Value!;
-        var parts = expression.Split("==");
+        var rawAssertion = childToken.Value!.Trim();
 
-        if (parts.Length != 2)
+        if(rawAssertion.StartsWith("equals"))
         {
-            errors.Add(Errors.Error_InvalidToken(expression, childToken.Line, 0));
+            return;
         }
+
+        errors.Add(Errors.Error_InvalidAssertion(rawAssertion, childToken.Line, 0));
     }
 
     private async Task<IReadOnlyList<TestModel>> ExtractTests(List<Token> tokens)
@@ -171,7 +180,7 @@ internal sealed class WorkoutFileParser
             if (token.Type == TokenType.Test)
             {
                 var testToken = token as TestToken;
-                tests.Add(new TestModel(token.Value!, testToken!.Assertions.Select(_ => _.Value!).ToArray()));
+                tests.Add(new TestModel(token.Value!, [.. testToken!.Assertions]));
             }
         }
 

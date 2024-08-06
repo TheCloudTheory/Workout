@@ -62,6 +62,19 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
 
         this.logger.LogInformation($"Found {tests.Count} tests.");
 
+        foreach (var test in tests)
+        {
+            this.logger.LogInformation($"Running test: {test.TestName}.");
+            
+            foreach (var assertion in test.Assertions)
+            {
+                this.logger.LogDebug($"Running assertion: {assertion.Value}.");
+
+                var result = assertion.Assertion.Evaluate();
+                this.logger.LogInformation($"{test.TestName}: {result}.");
+            }
+        }
+
         return 0;
     }
 }

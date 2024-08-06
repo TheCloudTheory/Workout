@@ -3,6 +3,7 @@ using System.IO.Abstractions;
 using Bicep.Core;
 using Bicep.Core.Analyzers.Linter;
 using Bicep.Core.Configuration;
+using Bicep.Core.Emit;
 using Bicep.Core.Features;
 using Bicep.Core.FileSystem;
 using Bicep.Core.Registry;
@@ -53,8 +54,10 @@ internal sealed class BicepCompilationProvider
         var compilation = await compiler.CreateCompilation(new Uri(absolutePath), null, true);
         var models = compilation.GetAllBicepModels();
         var model = models.First(); // TODO: Is it safe to always assume a single result?
+        var writer = new TemplateWriter(model);
+        var template = writer.GetTemplate(new SourceAwareJsonTextWriter(new StringWriter())).Item1;
 
-        return new CompilationResult(model.AllResources, model.Outputs);
+        return new CompilationResult(model.AllResources, model.Outputs, template);
     }
 }
 
@@ -62,13 +65,16 @@ internal sealed class CompilationResult
 {
     private ImmutableArray<ResourceMetadata> allResources;
     private ImmutableArray<OutputMetadata> outputs;
+    private readonly Template template;
 
-    public CompilationResult(ImmutableArray<ResourceMetadata> allResources, ImmutableArray<OutputMetadata> outputs)
+    public CompilationResult(ImmutableArray<ResourceMetadata> allResources, ImmutableArray<OutputMetadata> outputs, Template template)
     {
         this.allResources = allResources;
         this.outputs = outputs;
+        this.template = template;
     }
 
     public ImmutableArray<ResourceMetadata> AllResources => this.allResources;
     public ImmutableArray<OutputMetadata> Outputs => this.outputs;
+    public Template Template => this.template;
 }
