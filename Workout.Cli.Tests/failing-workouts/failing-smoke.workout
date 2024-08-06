@@ -1,0 +1,9 @@
+import './acr.bicep'
+
+@smoke
+test smokeTest = {
+    equals(acr.name, 'acr')
+    equals(acr.location, 'eastus')
+    equals(acr.sku.name, 'Basic')
+    equals('foo', 'foo')
+}

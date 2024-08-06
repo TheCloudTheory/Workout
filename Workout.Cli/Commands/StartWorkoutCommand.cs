@@ -62,6 +62,8 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
 
         this.logger.LogInformation($"Found {tests.Count} tests.");
 
+        var failedTests = new List<TestModel>();
+
         foreach (var test in tests)
         {
             this.logger.LogInformation($"Running test: {test.TestName}.");
@@ -84,11 +86,17 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
             else
             {
                 this.logger.LogError($"Test {test.TestName} failed.");
+                failedTests.Add(test);
             }
-
-            return 0;
         }
 
+        if (failedTests.Count > 0)
+        {
+            this.logger.LogError($"Failed tests: {failedTests.Count}.");
+            return 1;
+        }
+
+        this.logger.LogInformation("All tests passed.");
         return 0;
     }
 }

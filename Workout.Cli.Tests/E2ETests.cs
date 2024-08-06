@@ -9,4 +9,12 @@ public class E2ETests
 
         Assert.That(result, Is.EqualTo(0));
     }
+
+    [Test]
+    public void E2E_WhenRunningWorkoutCommandForFailingTest_WorkoutMustFailt()
+    {
+        var result = Program.Main(["start", "workout", "--working-directory", "../../../failing-workouts"]);
+
+        Assert.That(result, Is.EqualTo(1));
+    }
 }
