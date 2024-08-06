@@ -1,0 +1,12 @@
+import './acr-with-params.bicep'
+
+@smoke
+test testCase1 = {
+    param(parAcrName, 'myacr')
+    param(parAcrLocation, 'westeurope')
+    param(parAdminUserEnabled, true)
+
+    equals(acr.name, 'myacr')
+    equals(acr.location, 'westeurope')
+    equals(acr.properties.adminUserEnabled, true)
+}

@@ -8,5 +8,6 @@ internal enum TokenType
     SmokeTestDecorator,
     Test,
     EndOfBlock,
-    Assertion
+    Assertion,
+    Param
 }

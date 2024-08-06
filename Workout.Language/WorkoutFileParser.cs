@@ -90,6 +90,19 @@ internal sealed class WorkoutFileParser
 
                     previousToken.AddAssertion(new AssertionToken(lineNumber, line, compiledImports));
                 }
+
+                if(line.StartsWith("param"))
+                {
+                    this.logger.LogDebug($"Found param block at line {lineNumber}.");
+
+                    if (tokens.Last() is not TestToken previousToken)
+                    {
+                        this.logger.LogError($"Error: Param found without a test block at line {lineNumber}.");
+                        continue;
+                    }
+
+                    previousToken.AddParam(new ParamToken(lineNumber, line));
+                }
             }
         }
 
@@ -128,7 +141,20 @@ internal sealed class WorkoutFileParser
                             errors.Add(Errors.Error_InvalidToken(token.Value!, childToken.Line, 0));
                         }
 
-                        ValidateAssertion(childToken, errors);
+                        if(childToken.Type == TokenType.Assertion)
+                        {
+                            ValidateAssertion(childToken, errors);
+                        }
+                    }
+
+                    foreach(var childToken in testToken.Params)
+                    {
+                        if(childToken.Type != TokenType.Param)
+                        {
+                            errors.Add(Errors.Error_InvalidToken(token.Value!, childToken.Line, 0));
+                        }
+
+                        ValidateParam(childToken, errors);
                     }
                     break;
                 case TokenType.SmokeTestDecorator:
@@ -160,6 +186,11 @@ internal sealed class WorkoutFileParser
         }
 
         errors.Add(Errors.Error_InvalidAssertion(rawAssertion, childToken.Line, 0));
+    }
+
+    private void ValidateParam(ParamToken childToken, List<Error> errors)
+    {
+        childToken.Validate(errors);
     }
 
     private async Task<IReadOnlyList<TestModel>> ExtractTests(List<Token> tokens)
