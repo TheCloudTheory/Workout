@@ -1,0 +1,13 @@
+import './acr.bicep'
+import './kv.bicep'
+
+@smoke
+test testCase1 = {
+    equals(acr.name, 'myacr')
+    equals(acr.location, 'eastus')
+    equals(acr.sku.name, 'Basic')
+    equals(acr.properties.adminUserEnabled, false)
+    equals(kv.name, 'mykv')
+    equals(kv.properties.tenantId, '00000000-0000-0000-0000-000000000000')
+    equals(kv.properties.accessPolicies.0.tenantId, '00000000-0000-0000-0000-000000000000')
+}

@@ -35,7 +35,10 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
         }
 
         this.logger.LogDebug("Searching for workout files.");
-        var workoutFiles = Directory.GetFiles(settings.WorkingDirectory, "*.workout", SearchOption.AllDirectories);
+        var workoutFiles = settings.File != null ?
+            [Path.Combine(settings.WorkingDirectory, settings.File)] :
+            Directory.GetFiles(settings.WorkingDirectory, "*.workout", SearchOption.AllDirectories);
+
         this.logger.LogInformation($"Found {workoutFiles.Length} workout files.");
 
         if (workoutFiles.Length == 0)
@@ -53,18 +56,27 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
                 new Bicep.BicepCompilationProvider(new FileSystem(), this.provider),
                 this.logger);
 
-            this.logger.LogDebug($"Parsing workout file: {workoutFile}.");
-            var parsedTests = parser.Parse(workoutFile).GetAwaiter().GetResult();
-            this.logger.LogDebug($"Parsed {parsedTests.Count} tests from {workoutFile}.");
+            try
+            {
+                this.logger.LogDebug($"Parsing workout file: {workoutFile}.");
+                var parsedTests = parser.Parse(workoutFile).GetAwaiter().GetResult();
+                this.logger.LogDebug($"Parsed {parsedTests.Count} tests from {workoutFile}.");
 
-            tests.AddRange(parsedTests);
+                tests.AddRange(parsedTests);
+            }
+            catch (Exception ex)
+            {
+                this.logger.LogError($"Error parsing workout file: {workoutFile}. {ex.Message}");
+                this.logger.LogDebug(ex.StackTrace!);
+                return 1;
+            }
         }
 
         this.logger.LogInformation($"Found {tests.Count} tests.");
 
         var failedTests = new List<TestModel>();
 
-        if(settings.TestCase is not null)
+        if (settings.TestCase is not null)
         {
             tests = tests.Where(x => x.TestName == settings.TestCase).ToList();
             this.logger.LogDebug("Filtered tests by test case.");
@@ -114,4 +126,7 @@ internal sealed class StartWorkoutCommandSettings : CommandSettings
 
     [CommandOption("-t|--test-case")]
     public string? TestCase { get; set; }
+
+    [CommandOption("-f|--file")]
+    public string? File { get; set; }
 }

@@ -25,4 +25,12 @@ public class E2ETests
 
         Assert.That(result, Is.EqualTo(0));
     }
+
+    [Test]
+    public void E2E_WhenRunningWorkoutCommandForSingleFile_WorkoutMustRunForSingleFileOnly()
+    {
+        var result = Program.Main(["start", "workout", "--working-directory", "../../../individual-workouts", "--file", "acr.workout"]);
+
+        Assert.That(result, Is.EqualTo(0));
+    }
 }

@@ -126,9 +126,37 @@ internal sealed record AssertionExpressionParameter
         var resourceDefinition = flattenedResources.Single(_ => _.WorkoutResourceId.Value == resourceAccessor);
         var json = resourceDefinition.ToJson();
         var rawObject = JObject.Parse(json);
-        var property = accessors.Skip(1).Aggregate((JToken)rawObject, (current, accessor) => current[accessor]);
-        var value = property.ToString();
 
+        // We need to skip first accessor because it's the resource identifier from Bicep.
+        // As an example, if the expression is "rg.name", we need to skip "rg" because
+        // those identifiers are non-existent in the JSON object.
+        var property = accessors.Skip(1).Aggregate((JToken)rawObject, (current, accessor) => {
+            JToken? result;
+
+            // If the current token is an array, we need to parse the accessor as an integer
+            // and get the element from the array. The requirement for that integer parsing
+            // comes from Newtonsoft.Json library.
+            //
+            // Note, that this doesn't work for accessing dictionary elements. From the syntax
+            // perspective, nothing prevents us from accessing them, but the implementation
+            // doesn't support it as of now.
+            if(current.Type == JTokenType.Array)
+            {
+                var index = int.Parse(accessor);
+                result = current[index];
+            }
+            
+            result = current[accessor];
+            
+            if(result == null)
+            {
+                throw new Exception($"Property {accessor} not found.");
+            }
+
+            return result;
+        });
+
+        var value = property.ToString();
         return value;
     }
 }
