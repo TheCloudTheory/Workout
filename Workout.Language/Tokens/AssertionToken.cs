@@ -1,7 +1,5 @@
 ﻿using System.Linq.Expressions;
-using Bicep.Core.Semantics;
-using Bicep.Core.Semantics.Metadata;
-using Microsoft.WindowsAzure.ResourceStack.Common.Json;
+using Newtonsoft.Json.Linq;
 using Workout.Bicep;
 
 namespace Workout.Language.Tokens;
@@ -50,11 +48,16 @@ internal sealed record AssertionExpression(LambdaExpression Expression, object[]
     public bool Evaluate()
     {
         var compiled = Expression.Compile();
-        var value = compiled.DynamicInvoke(Args[0].ToString(), Args[1].ToString());
+        var value = compiled.DynamicInvoke(TrimQuotes(Args[0].ToString()!), TrimQuotes(Args[1].ToString()!));
 
         if(value == null) return false; // TODO: May be better to find something meaningful to return here.
 
         return (bool)value;
+    }
+
+    private string TrimQuotes(string value)
+    {
+        return value.Trim().TrimStart('\'').TrimEnd('\'');
     }
 }
 
@@ -119,11 +122,14 @@ internal sealed record AssertionExpressionParameter
             return new object();
         }
 
-        var templates = this.compilations.Select(compilation => compilation.Template).ToList();
-        var declaredResources = this.compilations.SelectMany(compilation => compilation.AllResources).Select(resource => (DeclaredResourceMetadata)resource).ToList();
-        var resource = declaredResources.Single(resource => resource.Symbol.Kind == SymbolKind.Resource && resource.Symbol.Name == resourceAccessor);
+        var flattenedResources = this.compilations.Select(compilation => compilation.Template).SelectMany(_ => _.Resources).ToList();
+        var resourceDefinition = flattenedResources.Single(_ => _.WorkoutResourceId.Value == resourceAccessor);
+        var json = resourceDefinition.ToJson();
+        var rawObject = JObject.Parse(json);
+        var property = accessors.Skip(1).Aggregate((JToken)rawObject, (current, accessor) => current[accessor]);
+        var value = property.ToString();
 
-        return new object();
+        return value;
     }
 }
 
