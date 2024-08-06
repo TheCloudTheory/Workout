@@ -38,7 +38,7 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
         var workoutFiles = Directory.GetFiles(settings.WorkingDirectory, "*.workout", SearchOption.AllDirectories);
         this.logger.LogInformation($"Found {workoutFiles.Length} workout files.");
 
-        if(workoutFiles.Length == 0)
+        if (workoutFiles.Length == 0)
         {
             this.logger.LogWarning("No workout files found.");
             return 0;
@@ -49,7 +49,7 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
         foreach (var workoutFile in workoutFiles)
         {
             var parser = new WorkoutFileParser(
-                settings.WorkingDirectory, 
+                settings.WorkingDirectory,
                 new Bicep.BicepCompilationProvider(new FileSystem(), this.provider),
                 this.logger);
 
@@ -65,14 +65,28 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
         foreach (var test in tests)
         {
             this.logger.LogInformation($"Running test: {test.TestName}.");
-            
+
+            var results = new List<bool>();
             foreach (var assertion in test.Assertions)
             {
                 this.logger.LogDebug($"Running assertion: {assertion.Value}.");
 
                 var result = assertion.Assertion.Evaluate();
-                this.logger.LogInformation($"{test.TestName}: {result}.");
+                this.logger.LogDebug($"Running assertion: {assertion.Value} | Result: {result}.");
+
+                results.Add(result);
             }
+
+            if (results.All(x => x))
+            {
+                this.logger.LogInformation($"Test {test.TestName} passed.");
+            }
+            else
+            {
+                this.logger.LogError($"Test {test.TestName} failed.");
+            }
+
+            return 0;
         }
 
         return 0;
