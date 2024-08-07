@@ -88,7 +88,7 @@ internal sealed class WorkoutFileParser
                         continue;
                     }
 
-                    previousToken.AddAssertion(new AssertionToken(lineNumber, line, compiledImports));
+                    previousToken.AddAssertion(new AssertionToken(lineNumber, line, compiledImports, previousToken, this.logger));
                 }
 
                 if(line.StartsWith("param"))

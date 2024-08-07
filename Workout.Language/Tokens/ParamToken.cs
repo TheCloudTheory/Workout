@@ -9,7 +9,8 @@ internal sealed record ParamToken : Token
         var parts = TrimToken(Value!).Split(",");
 
         Name = parts[0];
-        ParamValue = parts[1].Trim();
+        RawValue = parts[1].Trim();
+        ParamType = GetParameterType();
     }
 
     private string TrimToken(string value)
@@ -18,7 +19,36 @@ internal sealed record ParamToken : Token
     }
 
     public string Name { get; }
-    public string ParamValue { get; }
+    public string RawValue { get; }
+    public ParameterType ParamType { get; }
+
+    public object? ParamValue => ParamType switch
+    {
+        ParameterType.String => RawValue,
+        ParameterType.Integer => int.Parse(RawValue),
+        ParameterType.Boolean => bool.Parse(RawValue),
+        _ => null
+    };
+
+    private ParameterType GetParameterType()
+    {
+        if (RawValue.StartsWith("'") && RawValue.EndsWith("'"))
+        {
+            return ParameterType.String;
+        }
+
+        if (RawValue == "true" || RawValue == "false")
+        {
+            return ParameterType.Boolean;
+        }
+
+        if (int.TryParse(RawValue, out _))
+        {
+            return ParameterType.Integer;
+        }
+
+        throw new Exception("Invalid parameter type.");
+    }
 
     internal void Validate(List<Error> errors)
     {
@@ -27,7 +57,7 @@ internal sealed record ParamToken : Token
             errors.Add(Errors.Error_InvalidParamName(Line, 0));
         }
 
-        if(string.IsNullOrWhiteSpace(ParamValue))
+        if(string.IsNullOrWhiteSpace(RawValue.ToString()))
         {
             errors.Add(Errors.Error_InvalidParamValue(Line, 0));
         }
