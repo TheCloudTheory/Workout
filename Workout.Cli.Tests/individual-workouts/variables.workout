@@ -1,0 +1,8 @@
+import './acr-with-variables.bicep'
+
+@smoke
+test testCase1 = {
+    equals(acr.name, 'myAcr')
+    equals(acr.location, 'westeurope')
+    equals(acr.properties.adminUserEnabled, false)
+}

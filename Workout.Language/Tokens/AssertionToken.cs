@@ -141,6 +141,7 @@ internal sealed partial record AssertionExpressionParameter
         }
 
         var flattenedResources = this.compilations.Select(compilation => compilation.Template).SelectMany(_ => _.Resources).ToList();
+        var flattenedVariables = this.compilations.Select(compilation => compilation.Template).SelectMany(_ => _.Variables).ToList();
         var resourceDefinition = flattenedResources.Single(_ => _.WorkoutResourceId.Value == resourceAccessor);
         var json = resourceDefinition.ToJson();
         var rawObject = JObject.Parse(json);
@@ -185,13 +186,13 @@ internal sealed partial record AssertionExpressionParameter
         if (value.StartsWith("[") && value.EndsWith("]"))
         {
             this.logger.LogDebug($"Evaluating dynamic property {value}.");
-            return EvaluateDynamicProperty(value);
+            return EvaluateDynamicProperty(value, flattenedVariables);
         }
 
         return value;
     }
 
-    private string EvaluateDynamicProperty(string value)
+    private string EvaluateDynamicProperty(string value, List<KeyValuePair<string, Azure.Deployments.Core.Entities.TemplateGenericProperty<JToken>>> variables)
     {
         var paramMatches = ParamRegex().Matches(value);
         if(paramMatches.Count > 0)
@@ -211,6 +212,24 @@ internal sealed partial record AssertionExpressionParameter
             }
         }
 
+        var variableMatches = VariableRegex().Matches(value);
+        if(variableMatches.Count > 0)
+        {
+            this.logger.LogDebug($"Found {variableMatches.Count} variables in dynamic property.");
+
+            foreach(Match match in variableMatches)
+            {
+                this.logger.LogDebug($"Evaluating variable {match.Value}.");
+
+                var variable = match.Value.Replace("variables(", string.Empty).TrimEnd(')');
+                var variableValue = variables.Single(_ => _.Key == variable.Replace("'", string.Empty)).Value.Value;
+                var replacedValue = value.Replace(match.Value, variableValue!.ToString());
+
+                this.logger.LogDebug($"Replaced variable {variable} with value {variableValue}.");
+                value = replacedValue;
+            }
+        }
+
         var result = value.TrimStart('[').TrimEnd(']');
         this.logger.LogDebug($"Finished evaluating dynamic property. Result: {result}.");
 
@@ -219,6 +238,9 @@ internal sealed partial record AssertionExpressionParameter
 
     [GeneratedRegex(@"parameters\('.+'\)", RegexOptions.Compiled)]
     private static partial Regex ParamRegex();
+
+    [GeneratedRegex(@"variables\('.+'\)", RegexOptions.Compiled)]
+    private static partial Regex VariableRegex();
 }
 
 internal enum ParameterType

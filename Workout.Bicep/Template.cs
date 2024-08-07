@@ -1,4 +1,3 @@
-using System;
 using Azure.Deployments.Core.Configuration;
 using Azure.Deployments.Core.Converters;
 using Azure.Deployments.Core.Definitions;
@@ -11,6 +10,7 @@ using Newtonsoft.Json.Linq;
 
 namespace Workout.Bicep;
 
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
 public class Template : TemplatePropertySerializable
 {
     private readonly Lazy<TemplateLanguageVersion> lazyParsedLanguageVersion;
@@ -67,17 +67,22 @@ public class Template : TemplatePropertySerializable
     [JsonIgnore]
     public TemplateLanguageVersion ParsedLanguageVersion => lazyParsedLanguageVersion.Value;
 
+
     public Template()
     {
         lazyParsedLanguageVersion = new Lazy<TemplateLanguageVersion>(delegate
         {
             if (LanguageVersion == null)
             {
+#pragma warning disable CS8603 // Possible null reference return.
                 return null;
+#pragma warning restore CS8603 // Possible null reference return.
             }
 
             TemplateLanguageVersion version;
+#pragma warning disable CS8603 // Possible null reference return.
             return TemplateLanguageVersion.TryParse(LanguageVersion.Value, out version) ? version : null;
+#pragma warning restore CS8603 // Possible null reference return.
         });
     }
 
@@ -96,7 +101,7 @@ public class Template : TemplatePropertySerializable
         return Resources.FirstOrDefault()?.SymbolicName != null;
     }
 
-    public bool TryFindImportByAlias(string importAlias, out TemplateImport import)
+    public bool TryFindImportByAlias(string importAlias, out TemplateImport? import)
     {
         if (Imports == null)
         {
@@ -114,10 +119,10 @@ public class Template : TemplatePropertySerializable
             throw new InvalidOperationException("Unable to find import with alias: " + importAlias + ".");
         }
 
-        return import;
+        return import!;
     }
 
-    public bool TryFindExtensionByAlias(string extensionAlias, out TemplateExtension extension)
+    public bool TryFindExtensionByAlias(string extensionAlias, out TemplateExtension? extension)
     {
         if (Extensions == null)
         {
@@ -135,7 +140,7 @@ public class Template : TemplatePropertySerializable
             throw new InvalidOperationException("Unable to find provider with alias: " + extensionAlias + ".");
         }
 
-        return extension;
+        return extension!;
     }
 
     public bool MayHaveProviderRequiringOAuthOboFlowImported(bool searchNestedTemplates = true)
@@ -196,3 +201,4 @@ public class Template : TemplatePropertySerializable
         }
     }
 }
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
