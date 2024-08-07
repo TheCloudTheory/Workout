@@ -6,6 +6,11 @@ internal sealed class Logger : ILogger
 {
     public void LogDebug(string message)
     {
+        if(!WorkoutContext.IsDebugEnabled)
+        {
+            return;
+        }
+
         Log(message, LogLevel.Debug);
     }
 

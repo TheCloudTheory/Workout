@@ -1,5 +1,6 @@
 using System.IO.Abstractions;
 using Spectre.Console.Cli;
+using Workout.Cli.Internals;
 using Workout.Cli.Internals.Logging;
 using Workout.Language;
 
@@ -21,6 +22,11 @@ internal sealed class StartWorkoutCommand : Command<StartWorkoutCommandSettings>
 
     public override int Execute(CommandContext context, StartWorkoutCommandSettings settings)
     {
+        if (settings.Debug == true)
+        {
+            WorkoutContext.EnableDebug();
+        }
+
         this.logger.LogDebug($"Starting command {nameof(StartWorkoutCommand)}.");
 
         if (settings.WorkingDirectory is not null)
@@ -129,4 +135,7 @@ internal sealed class StartWorkoutCommandSettings : CommandSettings
 
     [CommandOption("-f|--file")]
     public string? File { get; set; }
+
+    [CommandOption("--debug")]
+public bool? Debug { get; set; }
 }

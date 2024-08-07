@@ -165,8 +165,10 @@ internal sealed partial record AssertionExpressionParameter
                 var index = int.Parse(accessor);
                 result = current[index];
             }
-
-            result = current[accessor];
+            else
+            {
+                result = current[accessor];
+            }
 
             if (result == null)
             {
