@@ -46,9 +46,54 @@ Optional, marks a test as a smoke test (not yet supported).
 Each test in a Workout file must start with a `test` keyword. The basic syntax for each test looks like this:
 ```workout
 test <test-name> = {
+  <params>
   <assertions>
 }
 ```
+Params are input parameters defined by the Bicep files you imported, which allow you to provide dynamic values depending on your use case. For instance, let's assume you have the following Bicep file:
+```bicep
+param parAcrName string
+param parAcrLocation string = resourceGroup().location
+param parAdminUserEnabled bool = false
+
+resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
+  name: parAcrName
+  location: parAcrLocation
+  sku: {
+    name: 'Basic'
+  }
+  properties: {
+    adminUserEnabled: parAdminUserEnabled
+  }
+}
+```
+As you can see, it defines 3 separate `param` keywords for 3 different input parameters. If you define your Workout file as this:
+```workout
+import './acr-with-params.bicep'
+
+@smoke
+test testCase1 = {
+    equals(acr.name, 'myacr')
+    equals(acr.location, 'westeurope')
+    equals(acr.properties.adminUserEnabled, true)
+}
+```
+The test will fail as it will compare `acr.name` to `parAcrName`, `acr.location` to `parAcrLocation` and `acr.properties.adminUserEnabled` to `parAdminUserEnabled`. In short - Workout won't compile those parameters as there're no input values provided by you and it cannot infer it automatically. To fix that, you need to use `param` keywords in your Workout file as follows:
+```workout
+import './acr-with-params.bicep'
+
+@smoke
+test testCase1 = {
+    param(parAcrName, 'myacr')
+    param(parAcrLocation, 'westeurope')
+    param(parAdminUserEnabled, true)
+
+    equals(acr.name, 'myacr')
+    equals(acr.location, 'westeurope')
+    equals(acr.properties.adminUserEnabled, true)
+}
+```
+
 Assertions are a set of logical expressions providing you the ability to write conditions for Workout to validate. Available assertions and their syntax is described below. Note, that assertion must be part of the `test` block, otherwise compilation error is returned by Workout.
 
 ### Assertions
