@@ -186,7 +186,10 @@ internal sealed partial record AssertionExpressionParameter
         if (value.StartsWith("[") && value.EndsWith("]"))
         {
             this.logger.LogDebug($"Evaluating dynamic property {value}.");
-            return EvaluateDynamicProperty(value, flattenedVariables);
+            var evaluatedProperty = EvaluateDynamicProperty(value, flattenedVariables).TrimStart('[').TrimEnd(']');
+
+            this.logger.LogDebug($"Finished evaluating dynamic property. Result: {evaluatedProperty}.");
+            return evaluatedProperty;
         }
 
         return value;
@@ -194,45 +197,73 @@ internal sealed partial record AssertionExpressionParameter
 
     private string EvaluateDynamicProperty(string value, List<KeyValuePair<string, Azure.Deployments.Core.Entities.TemplateGenericProperty<JToken>>> variables)
     {
-        var paramMatches = ParamRegex().Matches(value);
-        if(paramMatches.Count > 0)
+        var isMatch = true;
+        while(isMatch)
         {
-            this.logger.LogDebug($"Found {paramMatches.Count} parameters in dynamic property.");
+            isMatch = false;
 
-            foreach(Match match in paramMatches)
+            var paramMatches = ParamRegex().Matches(value);
+            if(paramMatches.Count > 0)
             {
-                this.logger.LogDebug($"Evaluating parameter {match.Value}.");
+                this.logger.LogDebug($"Found {paramMatches.Count} parameters in dynamic property.");
 
-                var param = match.Value.Replace("parameters(", string.Empty).TrimEnd(')');
-                var paramValue = this.parent.Params.Single(_ => _.Name == param.Replace("'", string.Empty)).ParamValue;
-                var replacedValue = value.Replace(match.Value, paramValue!.ToString());
+                isMatch = true;
+                foreach(Match match in paramMatches)
+                {
+                    this.logger.LogDebug($"Evaluating parameter {match.Value}.");
 
-                this.logger.LogDebug($"Replaced parameter {param} with value {paramValue}.");
-                value = replacedValue;
+                    var param = match.Value.Replace("parameters(", string.Empty).TrimEnd(')');
+                    var paramValue = this.parent.Params.Single(_ => _.Name == param.Replace("'", string.Empty)).ParamValue;
+                    var replacedValue = value.Replace(match.Value, paramValue!.ToString());
+
+                    this.logger.LogDebug($"Replaced parameter {param} with value {paramValue}.");
+                    value = replacedValue;
+                }
             }
+
+            var variableMatches = VariableRegex().Matches(value);
+            if(variableMatches.Count > 0)
+            {
+                this.logger.LogDebug($"Found {variableMatches.Count} variables in dynamic property.");
+
+                isMatch = true;
+                foreach(Match match in variableMatches)
+                {
+                    this.logger.LogDebug($"Evaluating variable {match.Value}.");
+
+                    var variable = match.Value.Replace("variables(", string.Empty).TrimEnd(')');
+                    var variableValue = variables.Single(_ => _.Key == variable.Replace("'", string.Empty)).Value.Value;
+                    var replacedValue = value.Replace(match.Value, variableValue!.ToString());
+
+                    this.logger.LogDebug($"Replaced variable {variable} with value {variableValue}.");
+                    value = replacedValue;
+                }
+            }
+
+            var formatMatches = FormatRegex().Matches(value);
+            if(formatMatches.Count > 0)
+            {
+                this.logger.LogDebug($"Found {formatMatches.Count} format functions in dynamic property.");
+
+                isMatch = true;
+                foreach(Match match in formatMatches)
+                {
+                    this.logger.LogDebug($"Evaluating format function {match.Value}.");
+
+                    var args = match.Value.Replace("format(", string.Empty).TrimEnd(')').Split(",");
+                    var formatValue = args[0].Replace("'", string.Empty).Trim();
+                    var formatArgs = args[1].Replace("'", string.Empty).Trim();
+                    var replacedValue = value.Replace(match.Value, string.Format(formatValue, formatArgs));
+
+                    this.logger.LogDebug($"Replaced format function {match.Value} with value {replacedValue}.");
+                    value = replacedValue;
+                }
+            }
+
+            // Need to do evaluation for if()
         }
 
-        var variableMatches = VariableRegex().Matches(value);
-        if(variableMatches.Count > 0)
-        {
-            this.logger.LogDebug($"Found {variableMatches.Count} variables in dynamic property.");
-
-            foreach(Match match in variableMatches)
-            {
-                this.logger.LogDebug($"Evaluating variable {match.Value}.");
-
-                var variable = match.Value.Replace("variables(", string.Empty).TrimEnd(')');
-                var variableValue = variables.Single(_ => _.Key == variable.Replace("'", string.Empty)).Value.Value;
-                var replacedValue = value.Replace(match.Value, variableValue!.ToString());
-
-                this.logger.LogDebug($"Replaced variable {variable} with value {variableValue}.");
-                value = replacedValue;
-            }
-        }
-
-        var result = value.TrimStart('[').TrimEnd(']');
-        this.logger.LogDebug($"Finished evaluating dynamic property. Result: {result}.");
-
+        var result = value;
         return result;
     }
 
@@ -241,6 +272,11 @@ internal sealed partial record AssertionExpressionParameter
 
     [GeneratedRegex(@"variables\('.+'\)", RegexOptions.Compiled)]
     private static partial Regex VariableRegex();
+
+    // TODO: This regex must be enhanced in the future to support format() functions with more
+    // than one parameter.
+    [GeneratedRegex(@"format\('.+', ?'.+'\)", RegexOptions.Compiled)]
+    private static partial Regex FormatRegex();
 }
 
 internal enum ParameterType

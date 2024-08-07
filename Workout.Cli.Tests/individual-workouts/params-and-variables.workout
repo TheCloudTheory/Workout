@@ -1,0 +1,19 @@
+import './acr-with-params-and-variables.bicep'
+
+@smoke
+test testCase1 = {
+    param(parAcrName, 'myacr')
+    param(parIsPrivate, true)
+
+    equals(acr.name, 'workoutmyacr')
+    equals(acr.properties.adminUserEnabled, true)
+}
+
+@smoke
+test testCase2 = {
+    param(parAcrName, 'myacr')
+    param(parIsPrivate, false)
+
+    equals(acr.name, 'workoutmyacr')
+    equals(acr.properties.adminUserEnabled, false)
+}
