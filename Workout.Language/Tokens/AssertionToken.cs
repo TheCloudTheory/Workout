@@ -11,7 +11,7 @@ internal sealed record AssertionToken : Token
     private readonly TestToken parent;
     private readonly ILogger logger;
 
-    public AssertionToken(int line, string value, CompilationResult[] compilations, TestToken parent, Cli.Internals.Logging.ILogger logger)
+    public AssertionToken(int line, string value, CompilationResult[] compilations, TestToken parent, ILogger logger)
         : base(line, value, TokenType.Assertion)
     {
         this.parent = parent;
@@ -47,7 +47,8 @@ internal sealed record AssertionToken : Token
 
             return new AssertionExpression(
                 Expression.Lambda(equalsExpression, leftExpression, rightExpression),
-                [left.Value!, right.Value!]
+                [left.Value!, right.Value!],
+                this.logger
             );
         }
 
@@ -55,12 +56,16 @@ internal sealed record AssertionToken : Token
     }
 }
 
-internal sealed record AssertionExpression(LambdaExpression Expression, object[] Args)
+internal sealed record AssertionExpression(LambdaExpression Expression, object[] Args, ILogger Logger)
 {
     public bool Evaluate()
     {
         var compiled = Expression.Compile();
-        var value = compiled.DynamicInvoke(TrimQuotes(Args[0].ToString()!), TrimQuotes(Args[1].ToString()!));
+        var left = TrimQuotes(Args[0].ToString()!);
+        var right = TrimQuotes(Args[1].ToString()!);
+        var value = compiled.DynamicInvoke(left, right);
+
+        Logger.LogDebug($"Comparing [{left}, {right}]; assertion evaluated to {value}.");
 
         if (value == null) return false; // TODO: May be better to find something meaningful to return here.
 
@@ -145,6 +150,10 @@ internal sealed partial record AssertionExpressionParameter
         // We need to flatten variables in similar way as resources, but it's possible that there are none. In that case,
         // we need to handle it gracefully.
         var flattenedVariables = this.compilations.Select(compilation => compilation.Template).Where(_ => _.Variables != null).SelectMany(_ => _.Variables).ToList();
+
+        // We need to do the same for parameters
+        var flattenedParameters = this.compilations.Select(compilation => compilation.Template).Where(_ => _.Parameters != null).SelectMany(_ => _.Parameters).ToList();
+
         var resourceDefinition = flattenedResources.Single(_ => _.WorkoutResourceId.Value == resourceAccessor);
         var json = resourceDefinition.ToJson();
         var rawObject = JObject.Parse(json);
@@ -189,7 +198,10 @@ internal sealed partial record AssertionExpressionParameter
         if (value.StartsWith("[") && value.EndsWith("]"))
         {
             this.logger.LogDebug($"Evaluating dynamic property {value}.");
-            var evaluatedProperty = EvaluateDynamicProperty(value, flattenedVariables).TrimStart('[').TrimEnd(']');
+
+            // We trim a bunch of extra characters like '[, [, )' from the format value to make sure that we got rid.
+            // of all the artifacts of evaluation.
+            var evaluatedProperty = EvaluateDynamicProperty(value, flattenedVariables, flattenedParameters).TrimStart('[').TrimEnd(']').TrimEnd(')');
 
             this.logger.LogDebug($"Finished evaluating dynamic property. Result: {evaluatedProperty}.");
             return evaluatedProperty;
@@ -198,10 +210,13 @@ internal sealed partial record AssertionExpressionParameter
         return value;
     }
 
-    private string EvaluateDynamicProperty(string value, List<KeyValuePair<string, Azure.Deployments.Core.Entities.TemplateGenericProperty<JToken>>> variables)
+    private string EvaluateDynamicProperty(
+        string value,
+        List<KeyValuePair<string, Azure.Deployments.Core.Entities.TemplateGenericProperty<JToken>>> variables,
+        List<KeyValuePair<string, Azure.Deployments.Core.Definitions.Schema.TemplateInputParameter>> parameters)
     {
         var isMatch = true;
-        while(isMatch)
+        while (isMatch)
         {
             isMatch = false;
 
@@ -216,7 +231,23 @@ internal sealed partial record AssertionExpressionParameter
                     this.logger.LogDebug($"Evaluating parameter {match.Value}.");
 
                     var param = match.Value.Replace("parameters(", string.Empty).TrimEnd(')');
-                    var paramValue = this.parent.Params.Single(_ => _.Name == param.Replace("'", string.Empty)).ParamValue;
+                    var paramValue = this.parent.Params.SingleOrDefault(_ => _.Name == param.Replace("'", string.Empty))?.ParamValue;
+
+                    // A parameters may have been defined with default value, hence it's worth checking for it 
+                    // in the template
+                    if (paramValue == null)
+                    {
+                        var parameter = parameters.SingleOrDefault(_ => _.Key == param.Replace("'", string.Empty)).Value.DefaultValue.Value.ToString();
+                        if (parameter != null)
+                        {
+                            paramValue = parameter;
+                        }
+                        else
+                        {
+                            throw new Exception($"Parameter {param} not found.");
+                        }
+                    }
+
                     var replacedValue = value.Replace(match.Value, paramValue!.ToString());
 
                     this.logger.LogDebug($"Replaced parameter {param} with value {paramValue}.");
@@ -243,6 +274,12 @@ internal sealed partial record AssertionExpressionParameter
                 }
             }
 
+            // Do not attempt to evaluate other dynamic expressions if there are parameters or variables left
+            if (variableMatches.Count != 0 || paramMatches.Count != 0)
+            {
+                continue;
+            }
+
             var formatMatches = FormatRegex().Matches(value);
             if (formatMatches.Count > 0)
             {
@@ -253,9 +290,14 @@ internal sealed partial record AssertionExpressionParameter
                 {
                     this.logger.LogDebug($"Evaluating format function {match.Value}.");
 
-                    var args = match.Value.Replace("format(", string.Empty).TrimEnd(')').Split(",");
+                    // As we're evaluating an exact match, we can safely try to compile other dynamic expressions
+                    // first and then evaluate the format function.
+                    var rawMatch = match.Value;
+                    CompileIfExpression(ref rawMatch, ref isMatch);
+
+                    var args = rawMatch.Replace("format(", string.Empty).TrimEnd(')').Split(",");
                     var formatValue = args[0].Replace("'", string.Empty).Trim();
-                    var formatArgs = args[1].Replace("'", string.Empty).Trim();
+                    var formatArgs = args.Skip(1).Select(_ => _.Replace("'", string.Empty).Trim()).ToArray();
                     var replacedValue = value.Replace(match.Value, string.Format(formatValue, formatArgs));
 
                     this.logger.LogDebug($"Replaced format function {match.Value} with value {replacedValue}.");
@@ -263,39 +305,39 @@ internal sealed partial record AssertionExpressionParameter
                 }
             }
 
-            var ifMatches = IfRegex().Matches(value);
-            if (CanPerformIfConditionCompilation(paramMatches, variableMatches, formatMatches, ifMatches))
-            {
-                this.logger.LogDebug($"Found {ifMatches.Count} if functions in dynamic property.");
-
-                isMatch = true;
-                foreach (Match match in ifMatches)
-                {
-                    this.logger.LogDebug($"Evaluating if function {match.Value}.");
-
-                    var args = match.Value.Replace("if(", string.Empty).TrimEnd(')').Split(",");
-                    var condition = args[0].Replace("'", string.Empty).Trim();
-                    var conditionValue = bool.Parse(condition);
-                    var replacedValue = conditionValue.ToString();
-
-                    this.logger.LogDebug($"Replaced if function {match.Value} with value {replacedValue}.");
-                    value = replacedValue;
-                }
-            }
+            CompileIfExpression(ref value, ref isMatch);
         }
 
         var result = value;
         return result;
     }
 
-    // if() statement can be evaluated only if there are no other dynamic expressions awaiting compilation.
-    // This is because if() statement needs conrete values to evaluate the condition.
-    private static bool CanPerformIfConditionCompilation(MatchCollection paramMatches, MatchCollection variableMatches, MatchCollection formatMatches, MatchCollection ifMatches)
+    private void CompileIfExpression(ref string value, ref bool isMatch)
     {
-        return ifMatches.Count > 0 && paramMatches.Count == 0 && variableMatches.Count == 0 && formatMatches.Count == 0;
+        var ifMatches = IfRegex().Matches(value);
+        if (ifMatches.Count == 0)
+        {
+            return;
+        }
+
+        this.logger.LogDebug($"Found {ifMatches.Count} if functions in dynamic property.");
+
+        isMatch = true;
+        foreach (Match match in ifMatches)
+        {
+            this.logger.LogDebug($"Evaluating if function {match.Value}.");
+
+            var args = match.Value.Replace("if(", string.Empty).TrimEnd(')').Split(",");
+            var condition = args[0].Replace("'", string.Empty).Trim();
+            var conditionValue = bool.Parse(condition) ? args[1] : args[2];
+            var replacedValue = conditionValue.ToString();
+
+            this.logger.LogDebug($"Replaced if function {match.Value} with value {replacedValue}.");
+            value = value.Replace(match.Value, replacedValue);
+        }
     }
 
-    [GeneratedRegex(@"parameters\('.+'\)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"parameters\('\w+'\)", RegexOptions.Compiled)]
     private static partial Regex ParamRegex();
 
     [GeneratedRegex(@"variables\('.+'\)", RegexOptions.Compiled)]
@@ -306,7 +348,7 @@ internal sealed partial record AssertionExpressionParameter
     [GeneratedRegex(@"format\('.+', ?'.+'\)", RegexOptions.Compiled)]
     private static partial Regex FormatRegex();
 
-    [GeneratedRegex(@"if\(.+, .+, .+\)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"if\(.+, '\w+', '\w+'\)", RegexOptions.Compiled)]
     private static partial Regex IfRegex();
 }
 

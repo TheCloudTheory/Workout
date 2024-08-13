@@ -1,0 +1,29 @@
+import './interpolation-multiple-parameters.bicep'
+
+@smoke
+test testCase1 = {
+    param(parAcrName, 'acr')
+    param(parIsPrivate, true)
+    param(parSuffix, 'xyz')
+
+    equals(acr.name, 'workoutacrdevxyzprivate')
+}
+
+@smoke
+test testCase2 = {
+    param(parAcrName, 'acr')
+    param(parIsPrivate, false)
+    param(parSuffix, 'xyz')
+
+    equals(acr.name, 'workoutacrdevxyzpublic')
+}
+
+@smoke
+test testCase3 = {
+    param(parAcrName, 'acr')
+    param(parIsPrivate, false)
+    param(parSuffix, 'xyz')
+    param(parEnvironment, 'tst')
+
+    equals(acr.name, 'workoutacrtstxyzpublic')
+}
