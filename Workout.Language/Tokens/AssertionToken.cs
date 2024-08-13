@@ -141,7 +141,10 @@ internal sealed partial record AssertionExpressionParameter
         }
 
         var flattenedResources = this.compilations.Select(compilation => compilation.Template).SelectMany(_ => _.Resources).ToList();
-        var flattenedVariables = this.compilations.Select(compilation => compilation.Template).SelectMany(_ => _.Variables).ToList();
+
+        // We need to flatten variables in similar way as resources, but it's possible that there are none. In that case,
+        // we need to handle it gracefully.
+        var flattenedVariables = this.compilations.Select(compilation => compilation.Template).Where(_ => _.Variables != null).SelectMany(_ => _.Variables).ToList();
         var resourceDefinition = flattenedResources.Single(_ => _.WorkoutResourceId.Value == resourceAccessor);
         var json = resourceDefinition.ToJson();
         var rawObject = JObject.Parse(json);
@@ -203,12 +206,12 @@ internal sealed partial record AssertionExpressionParameter
             isMatch = false;
 
             var paramMatches = ParamRegex().Matches(value);
-            if(paramMatches.Count > 0)
+            if (paramMatches.Count > 0)
             {
                 this.logger.LogDebug($"Found {paramMatches.Count} parameters in dynamic property.");
 
                 isMatch = true;
-                foreach(Match match in paramMatches)
+                foreach (Match match in paramMatches)
                 {
                     this.logger.LogDebug($"Evaluating parameter {match.Value}.");
 
@@ -222,12 +225,12 @@ internal sealed partial record AssertionExpressionParameter
             }
 
             var variableMatches = VariableRegex().Matches(value);
-            if(variableMatches.Count > 0)
+            if (variableMatches.Count > 0)
             {
                 this.logger.LogDebug($"Found {variableMatches.Count} variables in dynamic property.");
 
                 isMatch = true;
-                foreach(Match match in variableMatches)
+                foreach (Match match in variableMatches)
                 {
                     this.logger.LogDebug($"Evaluating variable {match.Value}.");
 
@@ -241,12 +244,12 @@ internal sealed partial record AssertionExpressionParameter
             }
 
             var formatMatches = FormatRegex().Matches(value);
-            if(formatMatches.Count > 0)
+            if (formatMatches.Count > 0)
             {
                 this.logger.LogDebug($"Found {formatMatches.Count} format functions in dynamic property.");
 
                 isMatch = true;
-                foreach(Match match in formatMatches)
+                foreach (Match match in formatMatches)
                 {
                     this.logger.LogDebug($"Evaluating format function {match.Value}.");
 
@@ -260,11 +263,36 @@ internal sealed partial record AssertionExpressionParameter
                 }
             }
 
-            // Need to do evaluation for if()
+            var ifMatches = IfRegex().Matches(value);
+            if (CanPerformIfConditionCompilation(paramMatches, variableMatches, formatMatches, ifMatches))
+            {
+                this.logger.LogDebug($"Found {ifMatches.Count} if functions in dynamic property.");
+
+                isMatch = true;
+                foreach (Match match in ifMatches)
+                {
+                    this.logger.LogDebug($"Evaluating if function {match.Value}.");
+
+                    var args = match.Value.Replace("if(", string.Empty).TrimEnd(')').Split(",");
+                    var condition = args[0].Replace("'", string.Empty).Trim();
+                    var conditionValue = bool.Parse(condition);
+                    var replacedValue = conditionValue.ToString();
+
+                    this.logger.LogDebug($"Replaced if function {match.Value} with value {replacedValue}.");
+                    value = replacedValue;
+                }
+            }
         }
 
         var result = value;
         return result;
+    }
+
+    // if() statement can be evaluated only if there are no other dynamic expressions awaiting compilation.
+    // This is because if() statement needs conrete values to evaluate the condition.
+    private static bool CanPerformIfConditionCompilation(MatchCollection paramMatches, MatchCollection variableMatches, MatchCollection formatMatches, MatchCollection ifMatches)
+    {
+        return ifMatches.Count > 0 && paramMatches.Count == 0 && variableMatches.Count == 0 && formatMatches.Count == 0;
     }
 
     [GeneratedRegex(@"parameters\('.+'\)", RegexOptions.Compiled)]
@@ -277,6 +305,9 @@ internal sealed partial record AssertionExpressionParameter
     // than one parameter.
     [GeneratedRegex(@"format\('.+', ?'.+'\)", RegexOptions.Compiled)]
     private static partial Regex FormatRegex();
+
+    [GeneratedRegex(@"if\(.+, .+, .+\)", RegexOptions.Compiled)]
+    private static partial Regex IfRegex();
 }
 
 internal enum ParameterType
