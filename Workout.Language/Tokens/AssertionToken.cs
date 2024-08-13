@@ -327,7 +327,9 @@ internal sealed partial record AssertionExpressionParameter
         {
             this.logger.LogDebug($"Evaluating if function {match.Value}.");
 
-            var args = match.Value.Replace("if(", string.Empty).TrimEnd(')').Split(",");
+            // Note we need to replace true() and false() with True and False respectively to make sure that
+            // they are compiled before the evaluation.
+            var args = match.Value.Replace("true()", "True").Replace("false()", "False").Replace("if(", string.Empty).TrimEnd(')').Split(",");
             var condition = args[0].Replace("'", string.Empty).Trim();
             var conditionValue = bool.Parse(condition) ? args[1] : args[2];
             var replacedValue = conditionValue.ToString();
@@ -348,7 +350,7 @@ internal sealed partial record AssertionExpressionParameter
     [GeneratedRegex(@"format\('.+', ?'.+'\)", RegexOptions.Compiled)]
     private static partial Regex FormatRegex();
 
-    [GeneratedRegex(@"if\(.+, '\w+', '\w+'\)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"if\(.+, .+, .+\){1}", RegexOptions.Compiled)]
     private static partial Regex IfRegex();
 }
 
