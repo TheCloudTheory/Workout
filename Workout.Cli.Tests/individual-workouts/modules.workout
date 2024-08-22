@@ -1,0 +1,9 @@
+import './modules.bicep'
+
+@smoke
+test testCase1 = {
+    equals(acr_private.outputs.acrName, 'workoutmodules1')
+    equals(acr_public.outputs.acrName, 'workoutmodules2')
+    equals(acr_private.outputs.acrIsAdminUserEnabled, true)
+    equals(acr_public.outputs.acrIsAdminUserEnabled, false)
+}

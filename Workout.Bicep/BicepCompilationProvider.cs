@@ -1,5 +1,4 @@
-﻿using System.Collections.Immutable;
-using System.IO.Abstractions;
+﻿using System.IO.Abstractions;
 using Bicep.Core;
 using Bicep.Core.Analyzers.Linter;
 using Bicep.Core.Configuration;
@@ -8,7 +7,6 @@ using Bicep.Core.Features;
 using Bicep.Core.FileSystem;
 using Bicep.Core.Registry;
 using Bicep.Core.Registry.Auth;
-using Bicep.Core.Semantics.Metadata;
 using Bicep.Core.Semantics.Namespaces;
 using Bicep.Core.TypeSystem.Providers;
 using Environment = Bicep.Core.Utils.Environment;
@@ -53,28 +51,24 @@ internal sealed class BicepCompilationProvider
         var absolutePath = this.fileSystem.Path.GetFullPath(path);
         var compilation = await compiler.CreateCompilation(new Uri(absolutePath), null, true);
         var models = compilation.GetAllBicepModels();
-        var model = models.First(); // TODO: Is it safe to always assume a single result?
-        var writer = new TemplateWriter(model);
-        var template = writer.GetTemplate(new SourceAwareJsonTextWriter(new StringWriter())).Item1;
+        var templates = new List<Template>();
 
-        return new CompilationResult(model.AllResources, model.Outputs, template);
+        foreach (var model in models)
+        {
+            var writer = new TemplateWriter(model);
+            var template = writer.GetTemplate(new SourceAwareJsonTextWriter(new StringWriter())).Item1;
+
+            templates.Add(template);
+        }
+
+
+        return new CompilationResult([.. templates]);
     }
 }
 
-internal sealed class CompilationResult
+internal sealed class CompilationResult(Template[] templates)
 {
-    private ImmutableArray<ResourceMetadata> allResources;
-    private ImmutableArray<OutputMetadata> outputs;
-    private readonly Template template;
+    private readonly Template[] templates = templates;
 
-    public CompilationResult(ImmutableArray<ResourceMetadata> allResources, ImmutableArray<OutputMetadata> outputs, Template template)
-    {
-        this.allResources = allResources;
-        this.outputs = outputs;
-        this.template = template;
-    }
-
-    public ImmutableArray<ResourceMetadata> AllResources => this.allResources;
-    public ImmutableArray<OutputMetadata> Outputs => this.outputs;
-    public Template Template => this.template;
+    public Template[] Templates => this.templates;
 }

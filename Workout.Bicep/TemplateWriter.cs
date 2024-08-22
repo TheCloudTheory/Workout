@@ -1404,6 +1404,11 @@ public class TemplateWriter
         emitter.EmitObject(() =>
         {
             var body = module.Body;
+
+            // WORKOUT: Start
+            emitter.EmitProperty("__workout_id", moduleSymbol.Name);
+            // WORKOUT: End
+
             if (body is ForLoopExpression forLoop)
             {
                 body = forLoop.Body;

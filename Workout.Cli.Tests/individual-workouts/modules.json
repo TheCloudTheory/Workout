@@ -1,0 +1,151 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.26.170.59819",
+      "templateHash": "2652552263241610901"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "acr-with-params-and-variables-private",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "parAcrName": {
+            "value": "modules"
+          },
+          "parIsPrivate": {
+            "value": true
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.26.170.59819",
+              "templateHash": "2450760532231631047"
+            }
+          },
+          "parameters": {
+            "parAcrName": {
+              "type": "string"
+            },
+            "parIsPrivate": {
+              "type": "bool",
+              "defaultValue": false
+            }
+          },
+          "variables": {
+            "varAcrName": "[format('workout{0}', parameters('parAcrName'))]",
+            "varAcrLocation": "westeurope",
+            "varAdminUserEnabled": "[if(parameters('parIsPrivate'), false(), true())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-11-01-preview",
+              "name": "[variables('varAcrName')]",
+              "location": "[variables('varAcrLocation')]",
+              "sku": {
+                "name": "Basic"
+              },
+              "properties": {
+                "adminUserEnabled": "[variables('varAdminUserEnabled')]"
+              }
+            }
+          ],
+          "outputs": {
+            "acrName": {
+              "type": "string",
+              "value": "[variables('varAcrName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2022-09-01",
+      "name": "acr-with-params-and-variables-public",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "parAcrName": {
+            "value": "modules"
+          },
+          "parIsPrivate": {
+            "value": false
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.26.170.59819",
+              "templateHash": "2450760532231631047"
+            }
+          },
+          "parameters": {
+            "parAcrName": {
+              "type": "string"
+            },
+            "parIsPrivate": {
+              "type": "bool",
+              "defaultValue": false
+            }
+          },
+          "variables": {
+            "varAcrName": "[format('workout{0}', parameters('parAcrName'))]",
+            "varAcrLocation": "westeurope",
+            "varAdminUserEnabled": "[if(parameters('parIsPrivate'), false(), true())]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2023-11-01-preview",
+              "name": "[variables('varAcrName')]",
+              "location": "[variables('varAcrLocation')]",
+              "sku": {
+                "name": "Basic"
+              },
+              "properties": {
+                "adminUserEnabled": "[variables('varAdminUserEnabled')]"
+              }
+            }
+          ],
+          "outputs": {
+            "acrName": {
+              "type": "string",
+              "value": "[variables('varAcrName')]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "outAcrPrivateName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr-with-params-and-variables-private'), '2022-09-01').outputs.acrName.value]"
+    },
+    "outAcrPublicName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr-with-params-and-variables-public'), '2022-09-01').outputs.acrName.value]"
+    }
+  }
+}

@@ -145,53 +145,70 @@ internal sealed partial record AssertionExpressionParameter
             return new object();
         }
 
-        var flattenedResources = this.compilations.Select(compilation => compilation.Template).SelectMany(_ => _.Resources).ToList();
+        var flattenedResources = this.compilations.SelectMany(compilation => compilation.Templates).SelectMany(_ => _.Resources).ToList();
 
         // We need to flatten variables in similar way as resources, but it's possible that there are none. In that case,
         // we need to handle it gracefully.
-        var flattenedVariables = this.compilations.Select(compilation => compilation.Template).Where(_ => _.Variables != null).SelectMany(_ => _.Variables).ToList();
+        var flattenedVariables = this.compilations.SelectMany(compilation => compilation.Templates).Where(_ => _.Variables != null).SelectMany(_ => _.Variables).ToList();
 
         // We need to do the same for parameters
-        var flattenedParameters = this.compilations.Select(compilation => compilation.Template).Where(_ => _.Parameters != null).SelectMany(_ => _.Parameters).ToList();
+        var flattenedParameters = this.compilations.SelectMany(compilation => compilation.Templates).Where(_ => _.Parameters != null).SelectMany(_ => _.Parameters).ToList();
+
+        // We need to flatten output as well
+        var flattenedOutputs = this.compilations.SelectMany(compilation => compilation.Templates).Where(_ => _.Outputs != null).SelectMany(_ => _.Outputs).ToList();
 
         var resourceDefinition = flattenedResources.Single(_ => _.WorkoutResourceId.Value == resourceAccessor);
         var json = resourceDefinition.ToJson();
         var rawObject = JObject.Parse(json);
 
-        // We need to skip first accessor because it's the resource identifier from Bicep.
-        // As an example, if the expression is "rg.name", we need to skip "rg" because
-        // those identifiers are non-existent in the JSON object.
-        var property = accessors.Skip(1).Aggregate((JToken)rawObject, (current, accessor) =>
+        string? value;
+
+        // Expression may contain either outputs or properties. If it contains outputs, there're two ways how we need to handle it.
+        // If it's an output of the main module, we can reference defined outputs directly. If it's an output of a nested module,
+        // we need to reference the nested module and then the output.
+        if (accessors.Contains("outputs"))
         {
-            JToken? result;
-            this.logger.LogDebug($"Evaluating property {accessor}.");
-
-            // If the current token is an array, we need to parse the accessor as an integer
-            // and get the element from the array. The requirement for that integer parsing
-            // comes from Newtonsoft.Json library.
-            //
-            // Note, that this doesn't work for accessing dictionary elements. From the syntax
-            // perspective, nothing prevents us from accessing them, but the implementation
-            // doesn't support it as of now.
-            if (current.Type == JTokenType.Array)
+            var outputAccessor = accessors.Last();
+            var output = flattenedOutputs.Single(_ => _.Key == outputAccessor);
+            value = output.Value.Value.Value.ToString();
+        }
+        else
+        {
+            // We need to skip first accessor because it's the resource identifier from Bicep.
+            // As an example, if the expression is "rg.name", we need to skip "rg" because
+            // those identifiers are non-existent in the JSON object.
+            var property = accessors.Skip(1).Aggregate((JToken)rawObject, (current, accessor) =>
             {
-                var index = int.Parse(accessor);
-                result = current[index];
-            }
-            else
-            {
-                result = current[accessor];
-            }
+                JToken? result;
+                this.logger.LogDebug($"Evaluating property {accessor}.");
 
-            if (result == null)
-            {
-                throw new Exception($"Property {accessor} not found.");
-            }
+                // If the current token is an array, we need to parse the accessor as an integer
+                // and get the element from the array. The requirement for that integer parsing
+                // comes from Newtonsoft.Json library.
+                //
+                // Note, that this doesn't work for accessing dictionary elements. From the syntax
+                // perspective, nothing prevents us from accessing them, but the implementation
+                // doesn't support it as of now.
+                if (current.Type == JTokenType.Array)
+                {
+                    var index = int.Parse(accessor);
+                    result = current[index];
+                }
+                else
+                {
+                    result = current[accessor];
+                }
 
-            return result;
-        });
+                if (result == null)
+                {
+                    throw new Exception($"Property {accessor} not found.");
+                }
 
-        var value = property.ToString();
+                return result;
+            });
+
+            value = property.ToString();
+        }
 
         // If value of a property starts with '[' and ends with ']' it means, that it's built dynamically
         // using functions, parameters and variables. We need to evaluate it.
@@ -201,7 +218,7 @@ internal sealed partial record AssertionExpressionParameter
 
             // We trim a bunch of extra characters like '[, [, )' from the format value to make sure that we got rid.
             // of all the artifacts of evaluation.
-            var evaluatedProperty = EvaluateDynamicProperty(value, flattenedVariables, flattenedParameters).TrimStart('[').TrimEnd(']').TrimEnd(')');
+            var evaluatedProperty = EvaluateDynamicProperty(value, flattenedVariables, flattenedParameters, flattenedResources, resourceDefinition).TrimStart('[').TrimEnd(']').TrimEnd(')');
 
             this.logger.LogDebug($"Finished evaluating dynamic property. Result: {evaluatedProperty}.");
             return evaluatedProperty;
@@ -213,7 +230,9 @@ internal sealed partial record AssertionExpressionParameter
     private string EvaluateDynamicProperty(
         string value,
         List<KeyValuePair<string, Azure.Deployments.Core.Entities.TemplateGenericProperty<JToken>>> variables,
-        List<KeyValuePair<string, Azure.Deployments.Core.Definitions.Schema.TemplateInputParameter>> parameters)
+        List<KeyValuePair<string, Azure.Deployments.Core.Definitions.Schema.TemplateInputParameter>> parameters,
+        List<TemplateResource> flattenedResources,
+        TemplateResource resourceDefinition)
     {
         var isMatch = true;
         while (isMatch)
@@ -237,14 +256,26 @@ internal sealed partial record AssertionExpressionParameter
                     // in the template
                     if (paramValue == null)
                     {
-                        var parameter = parameters.SingleOrDefault(_ => _.Key == param.Replace("'", string.Empty)).Value.DefaultValue.Value.ToString();
+                        var paramKey = param.Replace("'", string.Empty);
+                        var parameter = parameters.SingleOrDefault(_ => _.Key == paramKey).Value?.DefaultValue?.Value.ToString();
                         if (parameter != null)
                         {
                             paramValue = parameter;
                         }
                         else
                         {
-                            throw new Exception($"Parameter {param} not found.");
+                            // It's possible that the parameter is not passed as input of a test, but rather is
+                            // a parameter of a nested module. In that case, we need to find the parameter in the
+                            // schema of the module.
+                            parameter = resourceDefinition.Properties.Value["parameters"]![paramKey]!["value"]!.ToString();
+                            if (parameter != null)
+                            {
+                                paramValue = parameter;
+                            }
+                            else
+                            {
+                                throw new Exception($"Parameter {param} not found.");
+                            }
                         }
                     }
 
@@ -347,7 +378,7 @@ internal sealed partial record AssertionExpressionParameter
 
     // TODO: This regex must be enhanced in the future to support format() functions with more
     // than one parameter.
-    [GeneratedRegex(@"format\('.+', ?'.+'\)", RegexOptions.Compiled)]
+    [GeneratedRegex(@"format\('.+', ?'?.+'?\)", RegexOptions.Compiled)]
     private static partial Regex FormatRegex();
 
     [GeneratedRegex(@"if\(.+, .+, .+\){1}", RegexOptions.Compiled)]
